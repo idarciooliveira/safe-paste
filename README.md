@@ -69,7 +69,7 @@ echo "db 192.168.1.10 user bob@example.com" | safe-past --stats
 
 ## What it redacts
 
-IPv4/IPv6, MAC, emails, phones, AWS / GitHub / Slack / Stripe keys, JWT / Bearer, `password= / api_key:` values, `user:pass@host` URLs, private keys, credit cards (Luhn-checked), SSN — all offline regex, no network calls.
+IPv4/IPv6, MAC, emails, phones (US + Angola AO: `9XX XXX XXX`, `+244…`, `00244…`, `222` landlines), AWS / GitHub / Slack / Stripe keys, JWT / Bearer, `password= / api_key:` values, `user:pass@host` URLs, private keys, credit cards (Luhn-checked), SSN — all offline regex, no network calls.
 
 Same input → same token (`10.0.0.1` always becomes `[IP_1]`), so stack traces and joins still make sense.
 

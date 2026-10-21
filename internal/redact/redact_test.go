@@ -104,6 +104,48 @@ func TestCardSpacing(t *testing.T) {
 	}
 }
 
+// Angola (AO) numbers: local 9XX XXX XXX in any separator (or none),
+// +244/00244 international, Luanda 222 landlines. US shapes keep working.
+func TestAngolaPhones(t *testing.T) {
+	leaks := []string{
+		"call me 923 123 456",
+		"call me 923-123-456",
+		"call me 923.123.456",
+		"call me 923123456",
+		"tel +244 923 123 456",
+		"tel +244923123456",
+		"tel +244-923-123-456",
+		"tel 00244923123456",
+		"movicel 991 234 567",
+		"africell 940 111 222",
+		"office 222 123 456",
+		"zap 935 000 001",
+	}
+	for _, in := range leaks {
+		res := Clean(in, nil)
+		if !strings.Contains(res.Text, "[PHONE_AO_1]") {
+			t.Errorf("AO number not redacted: %q -> %q", in, res.Text)
+		}
+	}
+	// Consistency: same number twice -> same placeholder.
+	res := Clean("a 923 123 456 b 923 123 456 c 991 234 567", nil)
+	if strings.Count(res.Text, "[PHONE_AO_1]") != 2 || !strings.Contains(res.Text, "[PHONE_AO_2]") {
+		t.Fatalf("inconsistent AO mapping: %q", res.Text)
+	}
+	// Must not break: US numbers, short/long digit runs.
+	kept := map[string]string{
+		"us +1-555-123-4567": "us [PHONE_1]",
+		"us (555) 123-4567":  "us [PHONE_1]",
+		"order 92312345 ok":  "order 92312345 ok",
+		"id 923123456789 ok": "id 923123456789 ok",
+	}
+	for in, want := range kept {
+		if res := Clean(in, nil); res.Text != want {
+			t.Errorf("regression: %q -> %q, want %q", in, res.Text, want)
+		}
+	}
+}
+
 func TestBearerVariants(t *testing.T) {
 	for _, tok := range []string{
 		"abcdefghijklmnopqrstuvwx", // opaque

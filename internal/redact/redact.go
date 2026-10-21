@@ -44,7 +44,13 @@ var builtinRules = []Rule{
 	{"IPV4", regexp.MustCompile(`\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b`), "IP"},
 	{"MAC", regexp.MustCompile(`\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b`), "MAC"},
 	{"IPV6", regexp.MustCompile(`\b(?:[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}\b`), "IPV6"},
-	{"PHONE", regexp.MustCompile(`(?i)\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b`), "PHONE"},
+	// Angola (AO) mobile 9XX XXX XXX + Luanda landline 222 XXX XXX, local or
+	// +244/00244 international. Runs before the US rule: the spaced/dashed
+	// shapes overlap otherwise. Leading (?:^|[^\d+]) keeps a global +244
+	// attached (a bare \b cannot sit between a space and '+').
+	{"PHONE_AO_INTL", regexp.MustCompile(`(?:^|[^\d+])(?P<v>(?:\+244|00244)[-.\s]?(?:9\d{2}|2\d{2})[-.\s]?\d{3}[-.\s]?\d{3})\b`), "PHONE_AO"},
+	{"PHONE_AO_LOCAL", regexp.MustCompile(`(?:^|[^\d()])(?P<v>\(?(?:9\d{2}|222)\)?[-.\s]?\d{3}[-.\s]?\d{3})\b`), "PHONE_AO"},
+	{"PHONE", regexp.MustCompile(`(?i)(?:^|[^\d+])(?P<v>(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})\b`), "PHONE"},
 	// Ends with \d so the match never swallows a trailing space.
 	{"CREDIT_CARD", regexp.MustCompile(`\b(?:\d[ \-]?){12,18}\d\b`), "CARD"},
 	{"SSN", regexp.MustCompile(`\b\d{3}-\d{2}-\d{4}\b`), "SSN"},
