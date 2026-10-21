@@ -1,55 +1,88 @@
 # safe-past
 
-Clipboard-first PII scrubber for pasting prod logs into LLMs.
+Copy prod logs, press a hotkey, paste the clean version into any LLM. No app to open, no browser, 100% offline.
 
-**Flow:** copy logs → press hotkey → paste clean version. Nothing to open, no browser, works offline.
+`safe-past` scrubs PII and secrets from your clipboard (or stdin/files) and puts the clean text back — same value always maps to the same `[TYPE_N]` token, so logs stay correlatable after redaction.
 
-## Quick start (Windows)
+## How it works
+
+```
+copy logs → Ctrl+Shift+V → paste clean version
+```
+
+Under the hood the hotkey just runs:
+
+```
+safe-past --clipboard --copy --stats
+```
+
+## Install
+
+**Windows (prebuilt):**
 
 ```powershell
-make build
-# copy dist binary to C:\Tools\safe-past\safe-past.exe, add that dir to PATH
-safe-past --clipboard --copy --stats   # test once in terminal
-
-# Global hotkey (pick one, no code changes needed):
-# A) AutoHotkey: double-click windows\safe-past-hotkey.ahk (Ctrl+Shift+V)
-# B) PowerToys Keyboard Manager: bind a key to the same command
+# download safe-past-windows-amd64.exe from Releases, rename to safe-past.exe
+mkdir C:\Tools\safe-past
+# move safe-past.exe there, then:
+[Environment]::SetEnvironmentVariable("Path", $env:Path + ";C:\Tools\safe-past", "User")
+safe-past --version
 ```
 
-## macOS / Linux
+**macOS / Linux (from source):**
 
 ```bash
-make build && sudo cp bin/safe-past /usr/local/bin/
-safe-past --clipboard --copy --stats
-# mac: Raycast → import raycast/scrub-clipboard.js as Script Command, bind hotkey
-# linux (GNOME): Settings → Keyboard → Custom Shortcut → same command
+go install github.com/idarciooliveira/safe-past/cmd/safe-past@latest
+# or:
+git clone https://github.com/idarciooliveira/safe-past && cd safe-past && make build
+sudo cp bin/safe-past /usr/local/bin/
 ```
 
-## CLI
+## Global hotkey
 
-```
-safe-past --clipboard --copy --stats
-safe-past --list-rules
+**Windows — option A, no extra software (recommended):**
+
+1. Create `C:\Tools\safe-past\scrub.bat`:
+   ```bat
+   @"C:\Tools\safe-past\safe-past.exe" --clipboard --copy --stats
+   ```
+2. Right-click it → Create shortcut → shortcut Properties → Shortcut key → `Ctrl+Shift+V`.
+
+**Windows — option B, AutoHotkey v2:**
+
+Install AHK v2, double-click `windows/safe-past-hotkey.ahk` (`Ctrl+Shift+V`).
+
+**macOS:** Raycast → import `raycast/scrub-clipboard.js` as a Script Command, bind a hotkey.
+
+**Linux (GNOME):** Settings → Keyboard → Custom Shortcut → `safe-past --clipboard --copy --stats`.
+
+## Usage
+
+```bash
+safe-past --clipboard --copy --stats          # scrub clipboard in place
+safe-past --list-rules                         # show all detectors
 safe-past --pattern 'ACME-\d+' < big.log > clean.log --stats
 safe-past --config extra-patterns.txt --clipboard --copy
+echo "db 192.168.1.10 user bob@example.com" | safe-past --stats
 ```
 
-`--config` = one regex per line, `#` = comment. Example in `examples/extra-patterns.txt`.
+`--config` is one regex per line, `#` = comment. See `examples/extra-patterns.txt`.
 
-## What it redacts (regex-only, offline)
+## What it redacts
 
-IPv4/IPv6, emails, phones, AWS/GitHub/Slack/Stripe keys, JWT/Bearer,
-`password= / api_key:` values, `user:pass@host` URLs, private keys,
-credit cards (Luhn-checked), SSN. Same value → same `[TYPE_N]` token so
-logs stay correlatable.
+IPv4/IPv6, MAC, emails, phones, AWS / GitHub / Slack / Stripe keys, JWT / Bearer, `password= / api_key:` values, `user:pass@host` URLs, private keys, credit cards (Luhn-checked), SSN — all offline regex, no network calls.
 
-## Big files
+Same input → same token (`10.0.0.1` always becomes `[IP_1]`), so stack traces and joins still make sense.
 
-Pipes straight through, no clipboard needed.
-1.4MB / 60k secrets scrubbed in ~0.7s locally.
+## Dev
 
-## Layout
+```bash
+go test ./...
+make build        # bin/safe-past
+make build-all    # windows + darwin-arm64 + linux in dist/
+```
 
-- `internal/redact/` — engine + tests (`go test ./...`)
-- `cmd/safe-past/` — CLI
-- `windows/` — AHK hotkey, `raycast/` — Raycast script command
+Layout: `internal/redact/` engine · `cmd/safe-past/` CLI · `windows/` AHK hotkey · `raycast/` script command · `examples/` custom patterns.
+
+## Disclaimer
+
+Regex redaction is best-effort. Always spot-check before pasting sensitive logs anywhere.
