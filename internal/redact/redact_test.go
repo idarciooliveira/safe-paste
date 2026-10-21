@@ -200,8 +200,8 @@ func TestAngolaBI(t *testing.T) {
 func TestAngolaNIF(t *testing.T) {
 	labeled := map[string]string{
 		"NIF antigo 103093887BE0350 migrar": "NIF antigo [NIF_AO_1] migrar",
-		"NIF: 5417001234":                    "NIF: [NIF_AO_1]",
-		"contribuinte 5000123456":            "contribuinte [NIF_AO_1]",
+		"NIF: 5417001234":                   "NIF: [NIF_AO_1]",
+		"contribuinte 5000123456":           "contribuinte [NIF_AO_1]",
 	}
 	for in, want := range labeled {
 		if res := Clean(in, nil); res.Text != want {
