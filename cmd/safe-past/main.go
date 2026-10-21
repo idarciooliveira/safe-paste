@@ -56,6 +56,8 @@ func main() {
 		maskChar     = flag.String("mask-char", "*", "mask mode: masking character")
 		salt         = flag.String("salt", "safe-past-v1", "hash mode: domain-separation salt")
 		hashLen      = flag.Int("hash-len", 16, "hash mode: hex chars to keep (<=0 = full 64)")
+		uiFlag       = flag.Bool("ui", false, "interactive preview: review diff, y copies, q aborts (needs a TTY)")
+		disableFlag  = flag.String("disable", "", "skip detectors by placeholder kind (comma-separated, see --list-rules)")
 	)
 	entities := entityModes{}
 	flag.Var(entities, "entity-mode", "per-entity override, repeatable: TYPE:mode (e.g. -entity-mode IBAN:hash)")
@@ -135,10 +137,36 @@ func main() {
 	opCfg.MaskChar = *maskChar
 	opCfg.Salt = *salt
 	opCfg.HashLen = *hashLen
+	if *disableFlag != "" {
+		for _, d := range strings.Split(*disableFlag, ",") {
+			if d = strings.TrimSpace(strings.ToUpper(d)); d != "" {
+				opCfg.Disabled[d] = true
+			}
+		}
+	}
 	res := redact.CleanWithConfig(input, extras, opCfg)
 	out := res.Text
 	if *maxLen > 0 && len(out) > *maxLen {
 		out = out[:*maxLen] + fmt.Sprintf("\n\n…[truncated %d chars]", len(res.Text)-*maxLen)
+	}
+
+	if *uiFlag {
+		stats := strings.Join(redact.SortedCounts(res.Counts), " ")
+		if stats == "" {
+			stats = "clean"
+		}
+		stats = fmt.Sprintf("scrubbed %d value(s): %s", res.Replaces, stats)
+		if !isTTY() {
+			fatal("--ui needs a terminal (no TTY detected); pipe through without --ui or run interactively")
+		}
+		ok, err := runUI(input, out, stats)
+		if err != nil {
+			fatal("ui: %v", err)
+		}
+		if !ok {
+			fmt.Fprintln(os.Stderr, "aborted — clipboard untouched")
+			os.Exit(1)
+		}
 	}
 
 	if *copyBack || (*useClipboard && isPipeable()) {
@@ -161,6 +189,14 @@ func isPipeable() bool {
 	// If stdout is a terminal and --clipboard was used, the user almost
 	// certainly wants the result back in the clipboard.
 	fi, _ := os.Stdout.Stat()
+	return (fi.Mode() & os.ModeCharDevice) != 0
+}
+
+func isTTY() bool {
+	// Interactive input (keypresses) comes from stdin; stdout is often
+	// redirected (--ui file > clean.txt), so stdin is the right probe.
+	// Bubble Tea opens /dev/tty itself for rendering.
+	fi, _ := os.Stdin.Stat()
 	return (fi.Mode() & os.ModeCharDevice) != 0
 }
 

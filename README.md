@@ -84,6 +84,19 @@ IPv4/IPv6, MAC, emails, phones (US + Angola AO: `9XX XXX XXX`, `+244…`, `00244
 
 Same input → same token (`10.0.0.1` always becomes `[IP_1]`), so stack traces and joins still make sense.
 
+## Desktop UI (Wails)
+
+Two-pane Input → Output window in `ui/` (Go backend, HTML/CSS frontend):
+
+```bash
+cd ui && go mod tidy
+go test ./...        # bridge tests, headless-safe
+wails dev            # run (install wails CLI first)
+wails build          # platform installer/binary
+```
+
+Features: live redact as you type, operator select (replace/mask/hash/presidio tags), per-detector toggles (`--disable` equivalent), paste-from-clipboard, one-click copy. Open `ui/frontend/index.html?demo=1` in any browser for a static look preview.
+
 ## Dev
 
 ```bash

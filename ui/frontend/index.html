@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>safe-past</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">safe-past</div>
+  <div class="controls">
+    <select id="mode" title="Anonymizer operator">
+      <option value="replace" selected>replace [TYPE_N]</option>
+      <option value="mask">mask ****1234</option>
+      <option value="hash">hash sha16</option>
+      <option value="presidio">&lt;TYPE&gt; tags</option>
+    </select>
+    <button id="copyBtn" class="primary" disabled>Copy clean</button>
+  </div>
+</header>
+
+<details class="entities" open>
+  <summary>Detectors <span id="entCount"></span></summary>
+  <div id="toggles" class="toggles"></div>
+</details>
+
+<main class="panes">
+  <section class="pane">
+    <div class="pane-head">
+      <h2>Input</h2>
+      <div class="pane-actions">
+        <span id="inCount" class="muted"></span>
+        <button id="pasteBtn">Paste</button>
+        <button id="clearBtn">Clear</button>
+      </div>
+    </div>
+    <p class="hint">Paste production logs — nothing leaves this machine.</p>
+    <textarea id="input" spellcheck="false" placeholder="ERROR db connect failed host=192.168.1.10 user=bob@example.com …"></textarea>
+  </section>
+  <section class="pane">
+    <div class="pane-head">
+      <h2>Output</h2>
+      <span id="stats" class="muted">De-identified output appears here.</span>
+    </div>
+    <p class="hint">Review before pasting into any LLM.</p>
+    <pre id="output" aria-live="polite"></pre>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

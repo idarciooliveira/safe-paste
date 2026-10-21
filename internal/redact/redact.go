@@ -102,10 +102,12 @@ const (
 
 // OpConfig tunes rendering. Entities maps a placeholder kind (e.g. PHONE_AO,
 // IBAN, SECRET — see --list-rules) to a per-entity mode that overrides
-// Default.
+// Default. Disabled skips detection for those placeholder kinds entirely
+// (UI toggles, --disable flag).
 type OpConfig struct {
 	Default  Mode
 	Entities map[string]Mode
+	Disabled map[string]bool
 	// Mask: keep the last MaskKeep runes, mask the rest with MaskChar.
 	MaskKeep int
 	MaskChar string
@@ -121,6 +123,7 @@ func DefaultConfig() OpConfig {
 	return OpConfig{
 		Default:  ModeReplace,
 		Entities: map[string]Mode{},
+		Disabled: map[string]bool{},
 		MaskKeep: 4,
 		MaskChar: "*",
 		Salt:     "safe-past-v1",
@@ -175,6 +178,9 @@ func CleanWithConfig(text string, extraPatterns []string, cfg OpConfig) Result {
 	// earlier rules (more specific) win. We apply sequentially, which is simple
 	// and predictable for logs.
 	for _, r := range rules {
+		if cfg.Disabled[r.Placeholder] {
+			continue
+		}
 		mode := cfg.modeFor(r.Placeholder)
 		// Special-case ASSIGNED_SECRET / BEARER: only transform the value
 		// group, keep the key/scheme name so the log stays readable.

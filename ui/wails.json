@@ -1,0 +1,11 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "safe-past",
+  "outputfilename": "safe-past-ui",
+  "frontend:install": "",
+  "frontend:build": "",
+  "frontend:dev:watcher": "",
+  "frontend:dev:serverUrl": "",
+  "frontend:dist": "./frontend",
+  "author": { "name": "idarciooliveira" }
+}
