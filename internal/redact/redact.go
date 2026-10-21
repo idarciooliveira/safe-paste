@@ -33,6 +33,18 @@ var builtinRules = []Rule{
 	// MAC before IPV6: a MAC (AA:BB:CC:DD:EE:FF) also matches the loose
 	// IPv6 shape, so it must be claimed first to get the right label.
 	{"PRIVATE_KEY", regexp.MustCompile(`(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----`), "PRIVATE_KEY"},
+	// Angola IBAN: AO + 2 check digits + 21-digit BBAN (25 chars). The shape
+	// alone also matches any AO + 23 digits, so mod-97 is enforced in the
+	// guard below. Runs before CARD/PHONE so spaced groups are not eaten
+	// as cards or phone fragments.
+	{"IBAN_AO", regexp.MustCompile(`(?i)\bAO\d{2}(?:[\s.\-]?\d{4}){5}[\s.\-]?\d\b`), "IBAN"},
+	// Legacy singular NIF (pre-2019 AGT migration, still in old dumps):
+	// 1 + 8 digits + 2 letters + 4 digits. Before BI_AO: the BI shape
+	// would otherwise match its first 14 chars and leave a digit over.
+	{"NIF_AO_LEGACY", regexp.MustCompile(`(?i)\b1\d{8}[A-Z]{2}\d{4}\b`), "NIF_AO"},
+	// Bilhete de Identidade — also the singular NIF since the 2019 AGT
+	// migration: 9 digits + 2 letters + 3 digits, ex 004281770LA042.
+	{"BI_AO", regexp.MustCompile(`(?i)\b\d{9}\s?[A-Z]{2}\s?\d{3}\b`), "BI_AO"},
 	{"AWS_ACCESS_KEY", regexp.MustCompile(`\b(AKIA|ASIA|ABIA|ACCA)[0-9A-Z]{16}\b`), "AWS_KEY"},
 	{"GITHUB_TOKEN", regexp.MustCompile(`\b(ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b`), "GITHUB_TOKEN"},
 	{"SLACK_TOKEN", regexp.MustCompile(`\bxox[baprs]-[A-Za-z0-9-]{10,}\b`), "SLACK_TOKEN"},
@@ -44,6 +56,10 @@ var builtinRules = []Rule{
 	{"IPV4", regexp.MustCompile(`\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b`), "IP"},
 	{"MAC", regexp.MustCompile(`\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b`), "MAC"},
 	{"IPV6", regexp.MustCompile(`\b(?:[0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}\b`), "IPV6"},
+	// Collective-entity NIF (e.g. NIF: 5417001234): a bare 10-digit run would
+	// be eaten by the US phone rule, so the labeled form is claimed first.
+	// Singular NIFs need no rule — since 2019 they equal the BI number.
+	{"NIF_AO_LABELED", regexp.MustCompile(`(?i)\b(nif|contribuinte)\s*[:=]?\s*["']?(?P<v>\d{9,12})\b`), "NIF_AO"},
 	// Angola (AO) mobile 9XX XXX XXX + Luanda landline 222 XXX XXX, local or
 	// +244/00244 international. Runs before the US rule: the spaced/dashed
 	// shapes overlap otherwise. Leading (?:^|[^\d+]) keeps a global +244
@@ -116,6 +132,9 @@ func Clean(text string, extraPatterns []string) Result {
 		}
 		out = r.Pattern.ReplaceAllStringFunc(out, func(m string) string {
 			// Guard against obvious false positives:
+			if r.Name == "IBAN_AO" && !validIBAN(m) {
+				return m
+			}
 			if r.Name == "IPV6" && !looksLikeIPV6(m) {
 				return m
 			}
@@ -167,6 +186,48 @@ func looksLikeIPV6(m string) bool {
 		}
 	}
 	return strings.Count(m, ":") >= 3
+}
+
+// validIBAN enforces AO structure (25 chars: AO + 2 check + 21 BBAN) plus
+// the ISO 13616 mod-97 checksum, so random AO + 23-digit runs don't redact.
+func validIBAN(m string) bool {
+	var compact strings.Builder
+	compact.Grow(25)
+	for i := 0; i < len(m); i++ {
+		c := m[i]
+		switch {
+		case c >= '0' && c <= '9':
+			compact.WriteByte(c)
+		case c >= 'A' && c <= 'Z':
+			compact.WriteByte(c)
+		case c >= 'a' && c <= 'z':
+			compact.WriteByte(c - 32)
+		case c == ' ' || c == '.' || c == '-' || c == '\t':
+			// display separator, skip
+		default:
+			return false
+		}
+	}
+	s := compact.String()
+	if len(s) != 25 || s[0] != 'A' || s[1] != 'O' {
+		return false
+	}
+	for i := 2; i < 25; i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	rearr := s[4:] + s[:4]
+	rem := 0
+	for i := 0; i < len(rearr); i++ {
+		c := rearr[i]
+		if c >= '0' && c <= '9' {
+			rem = (rem*10 + int(c-'0')) % 97
+		} else {
+			rem = (rem*100 + int(c-55)) % 97 // A=10 … Z=35
+		}
+	}
+	return rem == 1
 }
 
 func luhnLike(digits string) bool {

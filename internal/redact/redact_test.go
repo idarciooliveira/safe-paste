@@ -146,6 +146,70 @@ func TestAngolaPhones(t *testing.T) {
 	}
 }
 
+// Angola IBAN: AO + 2 check digits + 21-digit BBAN, contiguous or spaced.
+// Only mod-97-valid values redact — a random AO + 23 digits must survive.
+func TestAngolaIBAN(t *testing.T) {
+	valid := []string{
+		"pague IBAN AO06004000000381825710152 urgente",
+		"AO06 0044 0000 6729 5030 1010 2",
+		"contiguo ao06005500000033893910183 fim",
+		"AO06000600008987698330119",
+	}
+	for _, in := range valid {
+		res := Clean(in, nil)
+		if !strings.Contains(res.Text, "[IBAN_1]") {
+			t.Errorf("valid IBAN not redacted: %q -> %q", in, res.Text)
+		}
+	}
+	invalid := []string{
+		"fake AO06000000000000000000000 fica", // 25 chars, bad checksum
+		"AO06 0044 0006 7295 0301 0102",       // 24 chars, shape rejected
+		"AO123",
+	}
+	for _, in := range invalid {
+		if res := Clean(in, nil); res.Text != in {
+			t.Errorf("invalid IBAN touched: %q -> %q", in, res.Text)
+		}
+	}
+	// Same IBAN twice -> same placeholder.
+	res := Clean("a AO06004000000381825710152 b AO06004000000381825710152", nil)
+	if strings.Count(res.Text, "[IBAN_1]") != 2 {
+		t.Fatalf("inconsistent IBAN mapping: %q", res.Text)
+	}
+}
+
+// Angola BI: 9 digits + 2 letters + 3 digits (also the singular NIF).
+func TestAngolaBI(t *testing.T) {
+	for _, in := range []string{
+		"BI 004281770LA042 anexado",
+		"BI: 123456789LA012",
+		"bi lower 004281770la042",
+	} {
+		res := Clean(in, nil)
+		if !strings.Contains(res.Text, "[BI_AO_1]") {
+			t.Errorf("BI not redacted: %q -> %q", in, res.Text)
+		}
+		if leak := "004281770"; strings.Contains(res.Text, leak) && strings.Contains(in, leak) {
+			t.Errorf("BI digits leaked: %q", res.Text)
+		}
+	}
+}
+
+// Angola NIF: legacy 15-char form + labeled collective numbers.
+// Singular NIFs equal the BI number (covered by TestAngolaBI).
+func TestAngolaNIF(t *testing.T) {
+	labeled := map[string]string{
+		"NIF antigo 103093887BE0350 migrar": "NIF antigo [NIF_AO_1] migrar",
+		"NIF: 5417001234":                    "NIF: [NIF_AO_1]",
+		"contribuinte 5000123456":            "contribuinte [NIF_AO_1]",
+	}
+	for in, want := range labeled {
+		if res := Clean(in, nil); res.Text != want {
+			t.Errorf("NIF: %q -> %q, want %q", in, res.Text, want)
+		}
+	}
+}
+
 func TestBearerVariants(t *testing.T) {
 	for _, tok := range []string{
 		"abcdefghijklmnopqrstuvwx", // opaque
