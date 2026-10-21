@@ -1,6 +1,8 @@
 package redact
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"sort"
@@ -85,8 +87,74 @@ func defaultRules() []Rule {
 // Rules exposes the built-in detection list (for --list-rules).
 func Rules() []Rule { return defaultRules() }
 
-// Clean redacts text, keeping a consistent placeholder per unique value.
+// Mode selects how a detected value is rendered, mirroring Presidio's
+// anonymizer operators: replace ([TYPE_N]), mask (****0152), hash
+// (salted sha256, stable across runs), presidio (<TYPE> tags for
+// pipeline compat).
+type Mode string
+
+const (
+	ModeReplace  Mode = "replace"
+	ModeMask     Mode = "mask"
+	ModeHash     Mode = "hash"
+	ModePresidio Mode = "presidio"
+)
+
+// OpConfig tunes rendering. Entities maps a placeholder kind (e.g. PHONE_AO,
+// IBAN, SECRET — see --list-rules) to a per-entity mode that overrides
+// Default.
+type OpConfig struct {
+	Default  Mode
+	Entities map[string]Mode
+	// Mask: keep the last MaskKeep runes, mask the rest with MaskChar.
+	MaskKeep int
+	MaskChar string
+	// Hash: hex(sha256(salt + value)) truncated to HashLen hex chars
+	// (<=0 means full 64). Default salt is a documented constant so
+	// output is reproducible; pass --salt for your own domain separation.
+	Salt    string
+	HashLen int
+}
+
+// DefaultConfig is replace mode — the historical behavior.
+func DefaultConfig() OpConfig {
+	return OpConfig{
+		Default:  ModeReplace,
+		Entities: map[string]Mode{},
+		MaskKeep: 4,
+		MaskChar: "*",
+		Salt:     "safe-past-v1",
+		HashLen:  16,
+	}
+}
+
+// ParseMode validates a --mode / --entity-mode value.
+func ParseMode(s string) (Mode, error) {
+	switch Mode(s) {
+	case ModeReplace, ModeMask, ModeHash, ModePresidio:
+		return Mode(s), nil
+	default:
+		return "", fmt.Errorf("unknown mode %q (want replace|mask|hash|presidio)", s)
+	}
+}
+
+func (c OpConfig) modeFor(kind string) Mode {
+	if m, ok := c.Entities[kind]; ok {
+		return m
+	}
+	return c.Default
+}
+
+// Clean redacts text with default (replace) operators.
 func Clean(text string, extraPatterns []string) Result {
+	return CleanWithConfig(text, extraPatterns, DefaultConfig())
+}
+
+// CleanWithConfig redacts text, rendering each finding per OpConfig.
+// In replace mode the same value always maps to the same [TYPE_N] token,
+// which keeps logs correlatable after redaction. Mask and hash modes are
+// deterministic by construction, so they need no mapping table.
+func CleanWithConfig(text string, extraPatterns []string, cfg OpConfig) Result {
 	rules := defaultRules()
 	for i, p := range extraPatterns {
 		if re, err := regexp.Compile(p); err == nil {
@@ -107,8 +175,9 @@ func Clean(text string, extraPatterns []string) Result {
 	// earlier rules (more specific) win. We apply sequentially, which is simple
 	// and predictable for logs.
 	for _, r := range rules {
-		// Special-case ASSIGNED_SECRET / BEARER: only redact the value group,
-		// keep the key/scheme name so the log stays readable.
+		mode := cfg.modeFor(r.Placeholder)
+		// Special-case ASSIGNED_SECRET / BEARER: only transform the value
+		// group, keep the key/scheme name so the log stays readable.
 		if vi := r.Pattern.SubexpIndex("v"); vi >= 0 {
 			out = r.Pattern.ReplaceAllStringFunc(out, func(m string) string {
 				loc := r.Pattern.FindStringSubmatchIndex(m)
@@ -116,18 +185,23 @@ func Clean(text string, extraPatterns []string) Result {
 					return m
 				}
 				val := m[loc[2*vi]:loc[2*vi+1]]
-				ph := placeholderFor(mapping, counters, counts, r.Placeholder, val)
+				ph := render(cfg, mode, mapping, counters, counts, r.Placeholder, val)
 				return m[:loc[2*vi]] + ph + m[loc[2*vi+1]:]
 			})
 			continue
 		}
-		// Special-case BASIC_AUTH_URL: keep scheme, redact user:pass.
+		// Special-case BASIC_AUTH_URL: keep scheme, transform user:pass
+		// (capture groups 2+3 span loc[4]:loc[7]).
 		if r.Name == "BASIC_AUTH_URL" {
-			n := len(r.Pattern.FindAllString(out, -1))
-			if n > 0 {
-				out = r.Pattern.ReplaceAllString(out, `$1[URL_CREDS]@`)
-				counts["URL_CREDS"] += n
-			}
+			out = r.Pattern.ReplaceAllStringFunc(out, func(m string) string {
+				loc := r.Pattern.FindStringSubmatchIndex(m)
+				if loc == nil || len(loc) < 8 || loc[4] < 0 || loc[7] < 0 {
+					return m
+				}
+				creds := m[loc[4]:loc[7]]
+				ph := render(cfg, mode, mapping, counters, counts, r.Placeholder, creds)
+				return m[:loc[4]] + ph + m[loc[7]:]
+			})
 			continue
 		}
 		out = r.Pattern.ReplaceAllStringFunc(out, func(m string) string {
@@ -149,7 +223,7 @@ func Clean(text string, extraPatterns []string) Result {
 					return m
 				}
 			}
-			return placeholderFor(mapping, counters, counts, r.Placeholder, m)
+			return render(cfg, mode, mapping, counters, counts, r.Placeholder, m)
 		})
 	}
 
@@ -160,16 +234,54 @@ func Clean(text string, extraPatterns []string) Result {
 	return Result{Text: out, Replaces: replaces, Counts: counts, Mapping: mapping}
 }
 
-func placeholderFor(mapping map[string]string, counters map[string]int, counts map[string]int, kind, original string) string {
-	if ph, ok := mapping[original]; ok {
-		counts[kind]++
+// render produces the replacement text for one detected value.
+func render(cfg OpConfig, mode Mode, mapping map[string]string, counters map[string]int, counts map[string]int, kind, original string) string {
+	counts[kind]++
+	switch mode {
+	case ModeMask:
+		return maskValue(original, cfg.MaskKeep, cfg.MaskChar)
+	case ModeHash:
+		return hashValue(original, cfg.Salt, cfg.HashLen)
+	case ModePresidio:
+		return "<" + kind + ">"
+	default: // ModeReplace
+		if ph, ok := mapping[original]; ok {
+			return ph
+		}
+		counters[kind]++
+		ph := fmt.Sprintf("[%s_%d]", kind, counters[kind])
+		mapping[original] = ph
 		return ph
 	}
-	counters[kind]++
-	ph := fmt.Sprintf("[%s_%d]", kind, counters[kind])
-	mapping[original] = ph
-	counts[kind]++
-	return ph
+}
+
+// maskValue keeps the last keep runes, masking the rest (Presidio mask
+// operator semantics, from_end variant).
+func maskValue(s string, keep int, char string) string {
+	if char == "" {
+		char = "*"
+	}
+	mc := []rune(char)[0]
+	runes := []rune(s)
+	if keep < 0 {
+		keep = 0
+	}
+	if len(runes) <= keep {
+		return strings.Repeat(string(mc), len(runes))
+	}
+	return strings.Repeat(string(mc), len(runes)-keep) + string(runes[len(runes)-keep:])
+}
+
+// hashValue is sha256(salt + value) hex, truncated to hashLen chars
+// (<=0 means full 64). Deterministic: same value + salt always agree,
+// so findings stay correlatable across runs and pastes.
+func hashValue(s, salt string, hashLen int) string {
+	sum := sha256.Sum256([]byte(salt + "\x00" + s))
+	hexed := hex.EncodeToString(sum[:])
+	if hashLen > 0 && hashLen < len(hexed) {
+		return hexed[:hashLen]
+	}
+	return hexed
 }
 
 // looksLikeIPV6 rejects clock times and fragments the loose pattern matches:

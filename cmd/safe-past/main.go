@@ -23,6 +23,24 @@ import (
 
 var version = "dev"
 
+// entityModes collects repeatable --entity-mode TYPE:mode flags.
+type entityModes map[string]redact.Mode
+
+func (e entityModes) String() string { return fmt.Sprint(map[string]redact.Mode(e)) }
+
+func (e entityModes) Set(s string) error {
+	parts := strings.SplitN(s, ":", 2)
+	if len(parts) != 2 {
+		return fmt.Errorf("want TYPE:mode, got %q", s)
+	}
+	m, err := redact.ParseMode(parts[1])
+	if err != nil {
+		return err
+	}
+	e[strings.ToUpper(parts[0])] = m
+	return nil
+}
+
 func main() {
 	var (
 		useClipboard = flag.Bool("clipboard", false, "read input from clipboard instead of stdin/file args")
@@ -33,7 +51,14 @@ func main() {
 		maxLen       = flag.Int("max", 0, "truncate output to N chars (0 = no limit)")
 		listRules    = flag.Bool("list-rules", false, "list built-in detection rules and exit")
 		showVersion  = flag.Bool("version", false, "print version and exit")
+		modeFlag     = flag.String("mode", "replace", "output mode: replace|mask|hash|presidio")
+		maskKeep     = flag.Int("mask-keep", 4, "mask mode: keep this many trailing chars")
+		maskChar     = flag.String("mask-char", "*", "mask mode: masking character")
+		salt         = flag.String("salt", "safe-past-v1", "hash mode: domain-separation salt")
+		hashLen      = flag.Int("hash-len", 16, "hash mode: hex chars to keep (<=0 = full 64)")
 	)
+	entities := entityModes{}
+	flag.Var(entities, "entity-mode", "per-entity override, repeatable: TYPE:mode (e.g. -entity-mode IBAN:hash)")
 	flag.Parse()
 
 	if *showVersion {
@@ -99,7 +124,18 @@ func main() {
 			extras = append(extras, line)
 		}
 	}
-	res := redact.Clean(input, extras)
+	mode, err := redact.ParseMode(*modeFlag)
+	if err != nil {
+		fatal("%v", err)
+	}
+	opCfg := redact.DefaultConfig()
+	opCfg.Default = mode
+	opCfg.Entities = map[string]redact.Mode(entities)
+	opCfg.MaskKeep = *maskKeep
+	opCfg.MaskChar = *maskChar
+	opCfg.Salt = *salt
+	opCfg.HashLen = *hashLen
+	res := redact.CleanWithConfig(input, extras, opCfg)
 	out := res.Text
 	if *maxLen > 0 && len(out) > *maxLen {
 		out = out[:*maxLen] + fmt.Sprintf("\n\n…[truncated %d chars]", len(res.Text)-*maxLen)

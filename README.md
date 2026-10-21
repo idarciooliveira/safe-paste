@@ -67,6 +67,17 @@ echo "db 192.168.1.10 user bob@example.com" | safe-past --stats
 
 `--config` is one regex per line, `#` = comment. See `examples/extra-patterns.txt`.
 
+## Output modes (Presidio-style operators)
+
+| Mode | Flag | `192.168.1.10` becomes | Notes |
+|---|---|---|---|
+| `replace` (default) | — | `[IP_1]` | same value → same token, per run |
+| `mask` | `--mode mask` | `********1.10` | keeps last `--mask-keep` (4) chars with `--mask-char` (`*`); tails stay debuggable |
+| `hash` | `--mode hash` | `4d2bbd81e6afb78a` | salted sha256, `--salt` (default `safe-past-v1`), `--hash-len` (16, `<=0` = full 64); stable across runs |
+| `presidio` | `--mode presidio` | `<IP>` | `<TYPE>` tags, drop-in for Presidio pipelines |
+
+Per-entity override (repeatable): `--entity-mode IBAN:hash --entity-mode PHONE_AO:mask`.
+
 ## What it redacts
 
 IPv4/IPv6, MAC, emails, phones (US + Angola AO: `9XX XXX XXX`, `+244…`, `00244…`, `222` landlines), Angola IBAN (mod-97 checked), BI + NIF, AWS / GitHub / Slack / Stripe keys, JWT / Bearer, `password= / api_key:` values, `user:pass@host` URLs, private keys, credit cards (Luhn-checked), SSN — all offline regex, no network calls.

@@ -210,6 +210,63 @@ func TestAngolaNIF(t *testing.T) {
 	}
 }
 
+// Presidio-style operator modes: mask keeps tails debuggable, hash is
+// stable across runs, presidio emits <TYPE> tags for pipeline compat.
+func TestModeMask(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Default = ModeMask
+	res := CleanWithConfig("db 192.168.1.10 card 4111-1111-1111-1111", nil, cfg)
+	if res.Text != "db ********1.10 card ***************1111" {
+		t.Fatalf("mask mismatch: %q", res.Text)
+	}
+	// Short values mask fully; structure around them survives.
+	res = CleanWithConfig("a 10.0.0.1 b", nil, cfg)
+	if res.Text != "a ****.0.1 b" {
+		t.Fatalf("mask mismatch: %q", res.Text)
+	}
+}
+
+func TestModeHashStable(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Default = ModeHash
+	a := CleanWithConfig("user bob@example.com ip 192.168.1.10", nil, cfg)
+	b := CleanWithConfig("user bob@example.com ip 192.168.1.10", nil, cfg)
+	if a.Text != b.Text {
+		t.Fatalf("hash not stable:\n%q\n%q", a.Text, b.Text)
+	}
+	if strings.Contains(a.Text, "bob@example.com") || strings.Contains(a.Text, "192.168.1.10") {
+		t.Fatalf("hash leaked plaintext: %q", a.Text)
+	}
+	// Different salt -> different output.
+	cfg2 := cfg
+	cfg2.Salt = "other-salt"
+	c := CleanWithConfig("user bob@example.com ip 192.168.1.10", nil, cfg2)
+	if c.Text == a.Text {
+		t.Fatalf("salt ignored: %q", a.Text)
+	}
+}
+
+func TestModePresidio(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Default = ModePresidio
+	res := CleanWithConfig("db 192.168.1.10 user bob@example.com password=hunter2", nil, cfg)
+	if res.Text != "db <IP> user <EMAIL> password=<SECRET>" {
+		t.Fatalf("presidio mismatch: %q", res.Text)
+	}
+}
+
+func TestModePerEntity(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Entities = map[string]Mode{"IBAN": ModeMask, "IP": ModeHash}
+	res := CleanWithConfig("db 192.168.1.10 IBAN AO06004000000381825710152", nil, cfg)
+	if !strings.Contains(res.Text, "****0152") || strings.Contains(res.Text, "192.168.1.10") {
+		t.Fatalf("per-entity override broken: %q", res.Text)
+	}
+	if strings.Contains(res.Text, "[") {
+		t.Fatalf("replace placeholder leaked into mixed modes: %q", res.Text)
+	}
+}
+
 func TestBearerVariants(t *testing.T) {
 	for _, tok := range []string{
 		"abcdefghijklmnopqrstuvwx", // opaque
