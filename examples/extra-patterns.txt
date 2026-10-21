@@ -1,0 +1,3 @@
+# one regex per line, # = comment
+ACME-\d+
+INTERNAL-[A-Z]{3,}-\d+

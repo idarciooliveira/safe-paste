@@ -1,4 +1,4 @@
-module github.com/idarciooliveira/prompt-parse
+module github.com/idarciooliveira/safe-past
 
 go 1.24
 

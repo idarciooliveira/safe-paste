@@ -1,8 +1,8 @@
-// Command prompt-parse: clipboard-first PII scrubber.
+// Command safe-past: clipboard-first PII scrubber.
 //
 // Typical flow (no app to open):
 //  1. Copy logs from prod.
-//  2. Run global hotkey -> `prompt-parse --clipboard --copy`
+//  2. Run global hotkey -> `safe-past --clipboard --copy`
 //  3. Paste the clean version into any LLM chat.
 //
 // Subcommands are flags for simplicity so Raycast / PowerToys / AHK
@@ -18,18 +18,34 @@ import (
 	"strings"
 
 	"github.com/atotto/clipboard"
-	"github.com/idarciooliveira/prompt-parse/internal/redact"
+	"github.com/idarciooliveira/safe-past/internal/redact"
 )
+
+var version = "dev"
 
 func main() {
 	var (
 		useClipboard = flag.Bool("clipboard", false, "read input from clipboard instead of stdin/file args")
 		copyBack     = flag.Bool("copy", false, "write cleaned text back to clipboard")
 		showStats    = flag.Bool("stats", false, "print redaction stats to stderr")
-		pattern      = flag.String("pattern", "", "extra custom regex (repeatable via comma-separated list)")
+		pattern      = flag.String("pattern", "", "extra custom regex (comma-separated)")
+		configFile   = flag.String("config", "", "file with one extra regex per line (# = comment)")
 		maxLen       = flag.Int("max", 0, "truncate output to N chars (0 = no limit)")
+		listRules    = flag.Bool("list-rules", false, "list built-in detection rules and exit")
+		showVersion  = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println("safe-past " + version)
+		return
+	}
+	if *listRules {
+		for _, r := range redact.Rules() {
+			fmt.Printf("%-16s -> [%s_N]\n", r.Name, r.Placeholder)
+		}
+		return
+	}
 
 	var input string
 	var err error
@@ -62,13 +78,26 @@ func main() {
 		input = string(b)
 	} else {
 		flag.Usage()
-		fmt.Fprintln(os.Stderr, "\nExample: prompt-parse --clipboard --copy --stats")
+		fmt.Fprintln(os.Stderr, "\nExample: safe-past --clipboard --copy --stats")
 		os.Exit(2)
 	}
 
 	var extras []string
 	if *pattern != "" {
 		extras = strings.Split(*pattern, ",")
+	}
+	if *configFile != "" {
+		b, err := os.ReadFile(*configFile)
+		if err != nil {
+			fatal("read config %s: %v", *configFile, err)
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			extras = append(extras, line)
+		}
 	}
 	res := redact.Clean(input, extras)
 	out := res.Text
@@ -105,6 +134,6 @@ func hasStdin() bool {
 }
 
 func fatal(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "prompt-parse: "+format+"\n", args...)
+	fmt.Fprintf(os.Stderr, "safe-past: "+format+"\n", args...)
 	os.Exit(1)
 }

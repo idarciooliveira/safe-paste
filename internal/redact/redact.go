@@ -48,6 +48,9 @@ func defaultRules() []Rule {
 	}
 }
 
+// Rules exposes the built-in detection list (for --list-rules).
+func Rules() []Rule { return defaultRules() }
+
 // Clean redacts text, keeping a consistent placeholder per unique value.
 func Clean(text string, extraPatterns []string) Result {
 	rules := defaultRules()
