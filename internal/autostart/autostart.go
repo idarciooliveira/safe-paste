@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -31,11 +32,18 @@ func ExePath() (string, error) {
 // current settings. When a custom config file is in use
 // (--config / SAFE_PAST_CONFIG_FILE), the login entry must carry it,
 // otherwise the next login reads the default config instead.
+// The path is resolved to absolute: a relative --config would otherwise
+// point elsewhere when the login session starts in another directory,
+// and a missing file makes config.Load silently fall back to defaults.
 func DaemonArgs() []string {
-	if p := strings.TrimSpace(os.Getenv(EnvConfigFile)); p != "" {
-		return []string{"--config", p}
+	p := strings.TrimSpace(os.Getenv(EnvConfigFile))
+	if p == "" {
+		return nil
 	}
-	return nil
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	return []string{"--config", p}
 }
 
 // LoginCommand resolves the current executable + preserved args.
@@ -49,10 +57,13 @@ func LoginCommand() (string, []string, error) {
 
 // quoteDesktopArg quotes one Exec token per the Desktop Entry spec:
 // bare tokens pass through, otherwise double-quote and escape \ " ` $.
+// Literal % is doubled to %%: launchers expand % field codes even inside
+// quoted args, so /app/%f would otherwise never reach the daemon unchanged.
 func quoteDesktopArg(s string) string {
 	if s == "" {
 		return `""`
 	}
+	s = strings.ReplaceAll(s, "%", "%%")
 	if !strings.ContainsAny(s, " \t\n\"'\\><~|&;$*?#()`") {
 		return s
 	}

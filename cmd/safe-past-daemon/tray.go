@@ -116,21 +116,27 @@ func watchMenuClicks() {
 // converges), and applies it immediately for snappy UI.
 // It reloads the latest file first: saving the stale in-memory copy would
 // overwrite a hotkey/mode edit made within the watcher poll interval.
+// Only Autostart is published to runtime here: copying the file's hotkey
+// without registering it would make watchConfig skip registration (same
+// strings) while the old shortcut is still active. The watcher converges
+// the remaining fields after registering.
 func toggleAutostart() {
 	latest, err := config.Load()
 	if err != nil {
-		// File unreadable: fall back to flipping the in-memory copy.
-		latest = trayState.getConfig()
-		latest.Autostart = !latest.Autostart
-	} else {
-		latest.Autostart = !latest.Autostart
+		// Do not overwrite a half-written/invalid file with the stale
+		// runtime copy: that erases the user's recent edits.
+		setStatus("config load failed: " + err.Error())
+		return
 	}
+	prev := trayState.getConfig()
+	latest.Autostart = !latest.Autostart
 	if err := latest.Save(); err != nil {
 		setStatus("config save failed: " + err.Error())
 		return
 	}
+	prev.Autostart = latest.Autostart
 	trayState.mu.Lock()
-	trayState.cfg = latest
+	trayState.cfg = prev
 	trayState.mu.Unlock()
 	trayState.syncAutostart()
 	refreshMenu()

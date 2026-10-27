@@ -237,7 +237,15 @@ func (d *daemon) watchConfig() {
 		}
 		old := d.getConfig()
 		next := cfg
-		if cfg.Hotkey != old.Hotkey {
+		// Compare against the actually registered shortcut, not just the
+		// last configured value: after a failed registration (including a
+		// failed startup where Spec is "") saving the same shortcut again
+		// must retry instead of looking like a no-op.
+		registered := ""
+		if d.mgr != nil {
+			registered = d.mgr.Spec()
+		}
+		if cfg.Hotkey != registered {
 			if d.mgr == nil {
 				log.Printf("safe-past-daemon: hotkey %q: no manager", cfg.Hotkey)
 				next.Hotkey = old.Hotkey

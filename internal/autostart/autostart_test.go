@@ -21,6 +21,13 @@ func TestQuoteDesktopArg(t *testing.T) {
 	if !strings.HasPrefix(got, `"`) || !strings.Contains(got, `\"`) {
 		t.Fatalf("quote not escaped: %q", got)
 	}
+	// Literal % must be doubled: launchers expand %f/%u field codes.
+	if got := quoteDesktopArg("/opt/app-%f/bin"); got != "/opt/app-%%f/bin" {
+		t.Fatalf("percent not escaped: %q", got)
+	}
+	if got := quoteDesktopArg("/home/me/My %f Apps/app"); !strings.Contains(got, "%%f") {
+		t.Fatalf("percent in quoted path not escaped: %q", got)
+	}
 }
 
 func TestXMLEscape(t *testing.T) {
@@ -52,6 +59,20 @@ func TestDaemonArgsPreservesCustomConfig(t *testing.T) {
 	args := DaemonArgs()
 	if len(args) != 2 || args[0] != "--config" || args[1] != "/tmp/custom config.json" {
 		t.Fatalf("custom config not preserved: %v", args)
+	}
+}
+
+func TestDaemonArgsResolvesAbsolute(t *testing.T) {
+	t.Setenv(EnvConfigFile, "./custom.json")
+	args := DaemonArgs()
+	if len(args) != 2 || args[0] != "--config" {
+		t.Fatalf("expected --config args: %v", args)
+	}
+	if !strings.HasPrefix(args[1], "/") {
+		t.Fatalf("relative config path must resolve absolute: %q", args[1])
+	}
+	if strings.Contains(args[1], "./custom.json") && !strings.HasPrefix(args[1], "/") {
+		t.Fatalf("not absolute: %q", args[1])
 	}
 }
 
