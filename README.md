@@ -39,35 +39,7 @@ sudo cp bin/safe-past /usr/local/bin/
 
 ## Global hotkey
 
-**Tray daemon (recommended):** `bin/safe-past-daemon` (or `dist/safe-past-daemon-*`)
-sits in the tray, owns the global hotkey, and scrubs the clipboard in place —
-no `.bat`, no AutoHotkey, no Raycast wiring.
-
-```bash
-safe-past-daemon                 # tray + hotkey (default Ctrl+Shift+V, Cmd+Shift+V on mac)
-safe-past-daemon --no-tray       # headless hotkey only (servers, scripts)
-safe-past-daemon --scrub-now     # scrub clipboard once and exit
-```
-
-Right-click the tray → **Edit config (hotkey…)** opens `config.json`:
-
-```json
-{ "hotkey": "Ctrl+Shift+V", "mode": "replace", "autostart": true }
-```
-
-Edits apply live (polled every 2s): change the hotkey, save, done. `Start at
-login` toggles the OS login item (Registry Run key / LaunchAgent /
-`~/.config/autostart`). Canonical hotkey spelling is `Ctrl/Alt/Shift/Super`
-plus one key (`Super` = `Cmd` on mac, `Win` elsewhere); aliases like
-`Cmd`, `Option`, `Control` are accepted.
-
-System notes: Linux needs `libX11-dev` at build time and `xclip`/`xsel` at
-runtime; the hotkey is X11-based, so on pure Wayland use tray **Scrub
-clipboard now**. macOS prompts for Accessibility permission on first use.
-
-**Manual hotkey (no daemon):**
-
-**Windows — option A, no extra software:**
+**Windows — option A, no extra software (recommended):**
 
 1. Create `C:\Tools\safe-past\scrub.bat`:
    ```bat
@@ -133,7 +105,7 @@ make build        # bin/safe-past
 make build-all    # windows + darwin-arm64 + linux in dist/
 ```
 
-Layout: `internal/redact/` engine · `internal/config|hotkey|hotkeymgr|autostart|scrub/` daemon support · `cmd/safe-past/` CLI · `cmd/safe-past-daemon/` tray+hotkey · `windows/` AHK hotkey · `raycast/` script command · `examples/` custom patterns.
+Layout: `internal/redact/` engine · `cmd/safe-past/` CLI · `windows/` AHK hotkey · `raycast/` script command · `examples/` custom patterns.
 
 ## Disclaimer
 
