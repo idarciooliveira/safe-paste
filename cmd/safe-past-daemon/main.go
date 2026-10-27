@@ -19,6 +19,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"sync"
 	"syscall"
@@ -46,7 +47,13 @@ func main() {
 	flag.Parse()
 
 	if *configPath != "" {
-		_ = os.Setenv(config.EnvFile, *configPath)
+		// Resolve once here (shell cwd): DaemonArgs would otherwise
+		// store a relative path that breaks at login in another cwd.
+		abs, err := filepath.Abs(*configPath)
+		if err != nil {
+			log.Fatalf("safe-past-daemon: --config %q: %v", *configPath, err)
+		}
+		_ = os.Setenv(config.EnvFile, abs)
 	}
 	if *showVer {
 		fmt.Println("safe-past-daemon " + version)

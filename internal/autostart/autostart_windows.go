@@ -47,26 +47,27 @@ func SetEnabled(enable bool) error {
 		_ = k.DeleteValue(Label) // idempotent
 		return nil
 	}
-	if err := k.SetStringValue(Label, loginValue()); err != nil {
+	v, err := loginValue()
+	if err != nil {
+		return err
+	}
+	if err := k.SetStringValue(Label, v); err != nil {
 		return fmt.Errorf("set Run value: %w", err)
 	}
 	return nil
 }
 
 // loginValue builds the Run-key command: quoted exe + preserved args.
-func loginValue() string {
+func loginValue() (string, error) {
 	exe, args, err := LoginCommand()
 	if err != nil {
-		if exe == "" {
-			return ""
-		}
-		return quoteWindowsArg(exe)
+		return "", err
 	}
 	parts := []string{quoteWindowsArg(exe)}
 	for _, a := range args {
 		parts = append(parts, quoteWindowsArg(a))
 	}
-	return strings.Join(parts, " ")
+	return strings.Join(parts, " "), nil
 }
 
 // IsCurrent reports whether the Run value matches the current executable
@@ -84,5 +85,9 @@ func IsCurrent() (bool, error) {
 		}
 		return false, err
 	}
-	return v == loginValue(), nil
+	want, err := loginValue()
+	if err != nil {
+		return false, err
+	}
+	return v == want, nil
 }

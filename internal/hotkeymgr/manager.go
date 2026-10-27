@@ -39,10 +39,18 @@ func New(onScrub func(), b Backend) *Manager {
 
 // SetHotkey validates spec ("Ctrl+Shift+V"), registers it, and swaps out
 // the previous hotkey. The old loop stops before the new one starts.
+// A canonical no-op (e.g. "ctrl+shift+v" vs "Ctrl+Shift+V") returns
+// early: re-registering an owned shortcut fails on X11/Windows.
 func (m *Manager) SetHotkey(spec string) error {
 	h, err := ihotkey.Parse(spec)
 	if err != nil {
 		return err
+	}
+	m.mu.Lock()
+	same := m.cur != nil && m.spec == h.String()
+	m.mu.Unlock()
+	if same {
+		return nil
 	}
 	reg, err := m.backend(h.Mods, h.Key)
 	if err != nil {

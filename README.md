@@ -32,9 +32,11 @@ safe-past --version
 
 ```bash
 go install github.com/idarciooliveira/safe-past/cmd/safe-past@latest
+go install github.com/idarciooliveira/safe-past/cmd/safe-past-daemon@latest
 # or:
 git clone https://github.com/idarciooliveira/safe-past && cd safe-past && make build
-sudo cp bin/safe-past /usr/local/bin/
+make build-daemon
+sudo cp bin/safe-past bin/safe-past-daemon /usr/local/bin/
 ```
 
 ## Global hotkey
@@ -58,7 +60,7 @@ Right-click the tray → **Edit config (hotkey…)** opens `config.json`:
 Edits apply live (polled every 2s): change the hotkey, save, done. `Start at
 login` toggles the OS login item (Registry Run key / LaunchAgent /
 `~/.config/autostart`). Canonical hotkey spelling is `Ctrl/Alt/Shift/Super`
-plus one key (`Super` = `Cmd` on mac, `Win` elsewhere); aliases like
+plus one key (`Super` = `Cmd` on Mac, `Win` elsewhere); aliases like
 `Cmd`, `Option`, `Control` are accepted.
 
 System notes: Linux needs `libX11-dev` at build time and `xclip`/`xsel` at

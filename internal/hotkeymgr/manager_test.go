@@ -102,3 +102,23 @@ func TestRejectsBadSpecWithoutBackend(t *testing.T) {
 		t.Fatalf("spec = %q", m.Spec())
 	}
 }
+
+func TestSameCanonicalSpecSkipsBackend(t *testing.T) {
+	calls := 0
+	m := New(func() {}, func(mods []string, key string) (Registration, error) {
+		calls++
+		return &fakeReg{ch: make(chan struct{}, 1)}, nil
+	})
+	if err := m.SetHotkey("Ctrl+Shift+V"); err != nil {
+		t.Fatal(err)
+	}
+	// Same canonical spec in different spelling: no re-register, or the
+	// OS rejects an already-owned hotkey and logs a bogus "unavailable".
+	if err := m.SetHotkey("ctrl+shift+v"); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("backend calls = %d, want 1", calls)
+	}
+	m.Close()
+}
